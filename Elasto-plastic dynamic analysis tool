@@ -1,0 +1,125 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Constants used in the program (from M Paz)
+pi = np.pi        # Pi
+k = 12.35e3       # Stiffness constant
+c = 274           # Damping co-efficient  
+R0 = 15e3         # Max restoring force at yield point
+m = 200.00        # Mass of the body
+tmax = 2.4        # Maximum time upto which simulation is run
+n = 5000          # Number of data points
+A = 0             # Isotropic hardening modulus
+B = 0             # Kinematic hardening modulus
+w0 = np.sqrt(k/m) # Natural frequency
+t0 = 2*pi/w0      # Natural time period
+
+# Sinusoidal force input
+F0 = 50e3         # Amplitude of applied force (sinusoidal input)
+p1 = 0.025*w0     # Frequency of applied sinusoidal force (p1)
+p2 = 0.1*w0       # Frequency of applied sinusoidal force (p2)
+Z = 5             # Max. no. of cycles 
+
+# Data points to be provided by user for the linear force input
+# F1 =
+# F2 = 
+# F3 =
+# F4 =
+# F5 =
+# t1 =
+# t2 = 
+# t3 =
+# t4 =
+# t5 =
+
+# Arrays for time, applied force and no. of cycles
+time = np.linspace(0, tmax, n)    # Array of time
+F = np.linspace(0, 0, n)          # Empty array of applied force
+t_bar = np.linspace(0, Z, n)      # No. of cycles
+
+# Specifying applied force w.r.t time
+# M Paz input
+for i in range(0,n,1):
+    if time[i] <= 0.45:
+        F[i] = 20000/0.45*time[i]
+    elif 0.45 < time[i] <= 1.1:
+        F[i] = -20000/(1.1 - 0.45)*(time[i] - 1.1) 
+    elif 1.1 < time[i] <= 1.2:
+        F[i] = 10000/(1.1 - 1.2)*(time[i] - 1.1)
+    elif 1.2 < time[i] <= 1.4:
+        F[i] = 10000/(1.4 - 1.2)*(time[i] - 1.4)
+    
+# Sinusoidal input
+#for i in range(0,n,1):
+    #F[i] = F0*np.sin(p2*t0*t_bar[i])
+
+# Linear force based on user
+#for i in range(0,n,1):
+    #if 0 <= time[i] < t1:
+        #F[i] = F1/t1*time[i]
+    #if t1 <= time[i] < t2:
+        #F[i] = F1 + (F2 - F1)/(t2 - t1)*(time[i] - t1)
+    #elif t2 < time[i] <= t3:
+        #F[i] = F2 + (F3 - F2)/(t3 - t2)*(time[i] - t2) 
+    #elif t3 < time[i] <= t4:
+        #F[i] = F3 + (F4 - F3)/(t4 - t3)*(time[i] - t3)
+    #elif t4 < time[i] <= t5:
+        #F[i] = F4 + (F5 - F4)/(t5 - t4)*(time[i] - t4)
+
+
+# Constitutive law
+def consti_law(delta_d, k, R0, R_i, A, a_i, q_i, B):
+    delta_R_tr = k*delta_d                           # Trial solution for dR
+    f = (R_i + delta_R_tr - q_i)**2-(R0 + A*a_i)**2  # Yield function
+    if f >= 0 and R_i*delta_d > 0:                   # Condition for plasticity
+        delta_yp = k/(k+A+B)*delta_d                 # Plastic displacement during plastic step
+    else:                                            # Else elastic
+        delta_yp = 0                                 # Plastic displacement during elastic step
+    delta_R = k*(delta_d - delta_yp)                 # Change in restoring force
+    delta_a = abs(delta_yp)                          # Change in internal hardening variable
+    delta_q = B*delta_yp                             # Change in back stress
+    K = delta_R/delta_d                              # K for the next step
+    return K, delta_R, delta_a, delta_q, delta_yp
+
+# Empty arrays for the responses
+y = np.linspace(0,0,n)        # Displacement of the body
+yd = np.linspace(0,0,n)       # Velocity of the body
+ydd = np.linspace(0,0,n)      # Acceleration of the body
+R = np.linspace(0,0,n)        # Restoring force developed in the system
+q = np.linspace(0,0,n)        # Back stress
+a = np.linspace(0,0,n)        # Internal hardening parameter
+yp = np.linspace(0,0,n)       # Plastic displacement
+
+K = k                         # Tangent modulus, K = dR/dy; for first step, equal to k
+ydd[0] = F[0]/m               # Initial acceleration
+    
+for i in range(0, n-1, 1):
+    dt = time[i+1] - time[i]                        # Time step
+    dF = F[i+1] - F[i]                              # Change in applied force
+        
+    x1 = 6*m/dt**2 + 3*c/dt                         # Used in denominator in eq 7
+    X1 = x1 + K                                     # Denominator in eq 7
+    X2 = m*(6/dt*yd[i] + 3*ydd[i])                  # Second term in numerator in eq 7
+    X3 = c*(3*yd[i] + dt/2*ydd[i])                  # Third term in numerator in eq 7
+ 
+    dy = (dF + X2 + X3)/X1                          # Displacement
+    dy_dot = 3/dt*dy - 3*yd[i] - dt/2*ydd[i]        # Change in velocity
+    dy_dotdot = (dF - c*dy_dot - K*dy)/m            # Change in acceleration
+ 
+    y[i+1] = y[i] + dy                              # Updating displacement at the end of the time step
+    yd[i+1] = yd[i] + dy_dot                        # Updating velocity at the end of the time step
+    ydd[i+1] = ydd[i] + dy_dotdot                   # Updating acceleration at the end of the time step
+    
+    # Recalling and obtaining the values from the constitutive law in this time step
+    K, dR, da, dq, dyp = consti_law(dy, k, R0, R[i], A, a[i], q[i], B)
+    
+    R[i+1] = R[i] + dR                              # Updating restoring force at the end of the time step
+    a[i+1] = a[i] + da                              # Updating internal hardening variable at the end of the time step
+    q[i+1] = q[i] + dq                              # Updating back stress at the end of the time step
+    yp[i+1] = yp[i] + dyp                           # Updating plastic displacement at the end of the time step
+
+plt.plot(time, y, label = 'EPP')
+plt.xlabel('Time')
+plt.ylabel('Displacement')
+plt.legend()
+plt.grid()
